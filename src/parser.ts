@@ -2,9 +2,9 @@ import { Token } from './tokenizer';
 import { useQueue } from './helpers/useQueue';
 
 export type Expr =
-  | number
-  | string
-  | { op: string; left: Expr; right: Expr }
+  | { type: 'operator'; op: string; left: Expr; right: Expr }
+  | { type: 'literal'; value: string | number }
+  | { type: 'identifier'; name: string }
   | { type: 'let'; name: string; value: Expr }
   | { type: 'fn'; params: string[]; body: Expr }
   | { type: 'call'; name: string; args: Expr[] }
@@ -61,7 +61,7 @@ export function parse(tokens: Token[]): Expr {
     ) {
       const op = advance().value as string;
       const right = parseMulDiv();
-      left = { op, left, right };
+      left = { type: 'operator', op, left, right };
     }
 
     return left;
@@ -77,7 +77,7 @@ export function parse(tokens: Token[]): Expr {
     ) {
       const op = advance().value as string;
       const right = parseFactor();
-      left = { op, left, right };
+      left = { type: 'operator', op, left, right };
     }
 
     return left;
@@ -88,7 +88,10 @@ export function parse(tokens: Token[]): Expr {
 
     if (token.type === 'number') {
       advance();
-      return token.value as number;
+      return { type: 'literal', value: token.value as number };
+    } else if (token.type === 'string') {
+      advance();
+      return { type: 'literal', value: token.value as string };
     } else if (token.value === '(') {
       advance(); // '(' をスキップ
       const expr = parseExpression(); // 括弧内の式をパース
@@ -108,7 +111,7 @@ export function parse(tokens: Token[]): Expr {
       return parseCall(name);
     }
 
-    return name;
+    return { type: 'identifier', name };
   }
 
   function parseCall(callee: string): Expr {

@@ -2,6 +2,14 @@ import { Expr } from './parser';
 
 export type Env = { [key: string]: any };
 
+// 環境に組み込み関数printを追加
+export const globalEnv: Env = {
+  print: (...value: any) => {
+    console.log(...value);
+    return value; // 出力した値を返す
+  },
+};
+
 // 型ガード関数の整理
 const isExprType = {
   let: (expr: Expr): expr is { type: 'let'; name: string; value: Expr } =>
@@ -14,7 +22,9 @@ const isExprType = {
     typeof expr === 'object' &&
     expr !== null &&
     (expr as any).type === 'statements',
-  op: (expr: Expr): expr is { op: string; left: Expr; right: Expr } =>
+  op: (
+    expr: Expr
+  ): expr is { type: 'operator'; op: string; left: Expr; right: Expr } =>
     typeof expr === 'object' && expr !== null && 'op' in expr,
 };
 
@@ -41,6 +51,9 @@ function evaluateCallExpr(
       newEnv[param] = evaluate(expr.args[index], env);
     });
     return evaluate(func.body, newEnv);
+  } else if (typeof func === 'function') {
+    const args = expr.args.map((arg) => evaluate(arg, env));
+    return func(...args);
   }
   throw new Error(`Undefined function: ${expr.name}`);
 }
@@ -84,15 +97,15 @@ export function evaluate(expr: Expr, env: Env = {}): any {
       return evaluateOpExpr(expr, env);
     }
 
-    if (typeof expr === 'number') {
-      return expr;
+    if (expr.type === 'literal') {
+      return expr.value;
     }
 
-    if (typeof expr === 'string') {
-      if (env[expr] !== undefined) {
-        return env[expr];
+    if (expr.type === 'identifier') {
+      if (env[expr.name] !== undefined) {
+        return env[expr.name];
       }
-      throw new Error(`Undefined variable: ${expr}`);
+      throw new Error(`Undefined variable: ${expr.name}`);
     }
 
     throw new Error(`Unknown expression type`);

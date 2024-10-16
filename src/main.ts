@@ -1,25 +1,22 @@
 import { tokenize } from './tokenizer';
 import { parse } from './parser';
-import { evaluate } from './evaluator';
+import { evaluate, globalEnv } from './evaluator';
 
 const code = `
 let add = (a, b) => a + b;
-
 let sub = (a, b) => a - b;
-
-let hoge = (a) => add(sub(a, x), 5)
-
+let mix = (a) => add(sub(a, x), 5)
 let x = 5;
 
-hoge(20)
+print(mix(20))
+print("Hello, World!")
 `;
 
 const tokens = tokenize(code);
 console.log(tokens.map((v) => v));
 const ast = parse(tokens);
 console.log(JSON.stringify(ast, null, 2));
-const env = {};
-const result = evaluate(ast, env);
+const result = evaluate(ast, globalEnv);
 
 const props = {
   code,
