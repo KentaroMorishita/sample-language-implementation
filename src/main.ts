@@ -15,18 +15,21 @@ hoge(20)
 `;
 
 const tokens = tokenize(code);
+console.log(tokens.map((v) => v));
 const ast = parse(tokens);
+console.log(JSON.stringify(ast, null, 2));
 const env = {};
 const result = evaluate(ast, env);
 
 const props = {
   code,
   result,
-  tokens: JSON.stringify(tokens, null, 0),
+  tokens: JSON.stringify(tokens.map(v => v.value), null, 0),
+  fullTokens: JSON.stringify(tokens, null, 4),
   ast: JSON.stringify(ast, null, 4),
 } as const;
 
-const render = ({ code, result, tokens, ast }: typeof props) =>
+const render = ({ code, result, tokens, fullTokens, ast }: typeof props) =>
   (document.querySelector('#app')!.innerHTML = `
 <div>
   <div style="white-space: pre-wrap; background: black; color: white; padding-left: 20px">
@@ -38,6 +41,8 @@ const render = ({ code, result, tokens, ast }: typeof props) =>
   <div style="white-space: pre-wrap">tokens: ${tokens}</div>
   <br/>
   <div style="white-space: pre-wrap">ast: ${ast}</div>
+  <br/>
+  <div style="white-space: pre-wrap">FullTokens: ${fullTokens}</div>
   <br/>
 </div>
 `);

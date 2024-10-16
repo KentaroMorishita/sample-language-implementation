@@ -1,89 +1,81 @@
+import { Token } from './tokenizer';
+import { useQueue } from './helpers/useQueue';
+
 export type Expr =
   | number
   | string
   | { op: string; left: Expr; right: Expr }
   | { type: 'let'; name: string; value: Expr }
-  | { type: 'function'; params: string[]; body: Expr }
+  | { type: 'fn'; params: string[]; body: Expr }
   | { type: 'call'; name: string; args: Expr[] }
   | { type: 'statements'; body: Expr[] };
 
-export function parse(tokens: string[]): Expr {
-  let index = 0;
+export function parse(tokens: Token[]): Expr {
+  const { advance, peek, hasMore } = useQueue<Token>(tokens);
+
+  function expect(value: string) {
+    const token = peek();
+    if (token.value !== value) {
+      throw new Error(`Expected "${value}", but found "${token.value}"`);
+    }
+    advance();
+  }
 
   function parseStatements(): Expr {
     const statements: Expr[] = [];
-    while (index < tokens.length) {
+    while (hasMore()) {
+      // トークンが残っている間は処理を続ける
       const expr = parseExpression();
-      if (tokens[index] === ';') {
-        index++; // skip ';'
+
+      // 文の区切りをセミコロンまたはトークンの終わりとして扱う
+      if (hasMore()) {
+        const nextToken = peek();
+        if (nextToken.type === 'punctuation' && nextToken.value === ';') {
+          advance(); // セミコロンを消費する
+        }
       }
+
       statements.push(expr);
     }
+
     return { type: 'statements', body: statements };
   }
 
   function parseExpression(): Expr {
-    // 変数定義のパース
-    if (tokens[index] === 'let') {
-      index++; // skip 'let'
-      const name = tokens[index++];
-      index++; // skip '='
+    const token = peek();
 
-      // 関数定義のパース
-      if (tokens[index] === '(') {
-        const params: string[] = [];
-        index++; // skip '('
-        while (tokens[index] !== ')') {
-          params.push(tokens[index++]); // 引数の追加
-          if (tokens[index] === ',') {
-            index++; // skip ','
-          }
-        }
-        index++; // skip ')'
-        index++; // skip '=>'
-
-        // 関数本体をパース
-        const body = parseExpression();
-        return {
-          type: 'let',
-          name,
-          value: { type: 'function', params, body },
-        };
-      }
-
-      const value = parseExpression();
-      return { type: 'let', name, value };
+    if (token.type === 'keyword' && token.value === 'let') {
+      return parseLet();
     }
 
-    // 関数呼び出しのパース
-    let left = parseTerm();
+    return parseAddSub();
+  }
 
-    if (tokens[index] === '(') {
-      index++;
-      const args: Expr[] = [];
-      while (tokens[index] !== ')') {
-        args.push(parseExpression()); // 引数をパース
-        if (tokens[index] === ',') {
-          index++; // skip ','
-        }
-      }
-      index++; // skip ')'
-      return { type: 'call', name: left as string, args };
-    }
+  function parseAddSub(): Expr {
+    let left = parseMulDiv();
 
-    while (tokens[index] === '+' || tokens[index] === '-') {
-      const op = tokens[index++];
-      const right = parseTerm();
+    while (
+      hasMore() &&
+      peek().type === 'operator' &&
+      (peek().value === '+' || peek().value === '-')
+    ) {
+      const op = advance().value as string;
+      const right = parseMulDiv();
       left = { op, left, right };
     }
 
     return left;
   }
 
-  function parseTerm(): Expr {
+  function parseMulDiv(): Expr {
     let left = parseFactor();
-    while (tokens[index] === '*' || tokens[index] === '/') {
-      const op = tokens[index++];
+
+    while (
+      hasMore() &&
+      peek().type === 'operator' &&
+      (peek().value === '*' || peek().value === '/')
+    ) {
+      const op = advance().value as string;
       const right = parseFactor();
       left = { op, left, right };
     }
@@ -92,16 +84,81 @@ export function parse(tokens: string[]): Expr {
   }
 
   function parseFactor(): Expr {
-    const token = tokens[index++];
-    if (/\d+/.test(token)) {
-      return parseInt(token, 10);
-    } else if (token === '(') {
-      const expr = parseExpression();
-      index++; // skip ')'
+    const token = peek();
+
+    if (token.type === 'number') {
+      advance();
+      return token.value as number;
+    } else if (token.value === '(') {
+      advance(); // '(' をスキップ
+      const expr = parseExpression(); // 括弧内の式をパース
+      expect(')');
       return expr;
-    } else {
-      return token;
+    } else if (token.type === 'identifier') {
+      return parseIdentifierOrCall();
     }
+
+    throw new Error(`Unexpected token: ${token.value}`);
+  }
+
+  function parseIdentifierOrCall(): Expr {
+    const name = advance().value as string;
+
+    if (hasMore() && peek().value === '(') {
+      return parseCall(name);
+    }
+
+    return name;
+  }
+
+  function parseCall(callee: string): Expr {
+    expect('(');
+    const args: Expr[] = [];
+
+    let first = true;
+    while (peek().value !== ')') {
+      if (!first) {
+        expect(',');
+      }
+      args.push(parseExpression());
+      first = false;
+    }
+    expect(')');
+
+    return { type: 'call', name: callee, args };
+  }
+
+  function parseLet(): Expr {
+    advance(); // 'let' をスキップ
+    const name = advance().value as string;
+    expect('=');
+
+    // 関数定義のパース
+    if (peek().value === '(') {
+      return parseFunction(name);
+    }
+
+    const value = parseExpression();
+    return { type: 'let', name, value };
+  }
+
+  function parseFunction(name: string): Expr {
+    expect('(');
+    const params: string[] = [];
+
+    let first = true;
+    while (peek().value !== ')') {
+      if (!first) {
+        expect(',');
+      }
+      params.push(advance().value as string);
+      first = false;
+    }
+    expect(')');
+    expect('=>');
+
+    const body = parseExpression();
+    return { type: 'let', name, value: { type: 'fn', params, body } };
   }
 
   return parseStatements();
